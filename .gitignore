@@ -1,0 +1,20 @@
+# Build output
+bin/
+obj/
+dist/
+
+# WinDivert binaries are downloaded by build.ps1 from the official release,
+# so they are not checked in (they're third-party and ~150 KB of binaries).
+native/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store

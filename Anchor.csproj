@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Anchor - a self-binding website blocker for Windows.
+    ONE project produces ONE Anchor.exe that runs in three modes (see Program.cs):
+      (no args)      the GUI you interact with (auto-elevates to admin)
+      service mode   the background Windows Service that does the blocking
+      guardian mode  the small watchdog service that restarts the blocker if killed
+    Publishing (see build.ps1) bundles the .NET runtime INTO the exe, so the
+    person running it does NOT need to install .NET first. They just run Anchor.exe.
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>                 <!-- WinExe = no console window pops up for the GUI -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>          <!-- the GUI uses WinForms (simple + built in) -->
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafe>true</AllowUnsafe>                  <!-- packet parsing uses a couple of fast Span slices; no raw pointers -->
+    <AssemblyName>Anchor</AssemblyName>
+    <RootNamespace>Anchor</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>anchor.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Version>1.0.0</Version>
+
+    <!-- Publish settings: one self-contained .exe. build.ps1 invokes publish with these. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ServiceController lets the GUI/guardian query and control the Windows Service.
+         (DPAPI and the registry APIs we use are already built into net10.0-windows.) -->
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
+  </ItemGroup>
+
+  <!--
+    The WinDivert driver + library. build.ps1 downloads these into the native\ folder.
+    They are copied NEXT TO the published Anchor.exe as loose files (the .sys driver must
+    be a real file on disk to load) rather than embedded in the single-file exe.
+  -->
+  <ItemGroup>
+    <None Include="native\WinDivert.dll" Condition="Exists('native\WinDivert.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="native\WinDivert64.sys" Condition="Exists('native\WinDivert64.sys')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
