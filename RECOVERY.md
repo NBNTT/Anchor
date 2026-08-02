@@ -1,10 +1,31 @@
 # Anchor — Break-Glass Recovery
 
-Keep this file. It's the guaranteed way out if you ever *really* need to disable Anchor
-before its lock timer finishes. It works because **Anchor's services do not run in Windows
-Safe Mode.**
+Keep this file. It's the way out if you ever *really* need to disable Anchor before its lock
+timer finishes.
 
 You will need to be an administrator on the PC (you are, on your own machine).
+
+---
+
+## First: the automatic safety net
+
+You may not need to do anything. While blocking is on, Anchor verifies every 30 seconds that
+ordinary HTTPS still works — a real TLS handshake to neutral infrastructure, by IP address, so
+the check still works even if DNS is the thing that's broken. If that fails for ~90 seconds,
+Anchor **turns blocking off by itself**, logs why, and backs off before retrying. Anchor is
+built to fail *open*: a missed block is always better than an unusable computer.
+
+Check `C:\ProgramData\Anchor\anchor.log` to see whether this happened.
+
+**There is deliberately no manual "off" switch.** By design, the only way out of an active
+lock is Safe Mode (below) — anything easier would make the commitment meaningless.
+
+> **Known limit, stated honestly:** the automatic check detects a *total* loss of connectivity.
+> If Anchor ever broke only *part* of your networking (one browser, one protocol) while the
+> machine was otherwise online, the watchdog would not notice, and Safe Mode below is your
+> route out. This happened once, on 2026-08-01, and the cause was fixed — Anchor now only ever
+> blocks the YouTube/Reddit domains listed in `src/Blocklist.cs` and never touches DNS or other
+> infrastructure.
 
 ---
 
@@ -65,3 +86,16 @@ The lock only counts time while your PC is on and Anchor is running, and it's ca
 - This procedure is intentionally documented. "Hard to remove" here means *high friction*,
   not *impossible* — that guardrail is what keeps the tool from ever bricking a machine you
   need for schoolwork.
+
+#RUN THESE COMMANDS (DO NOT DELETE)
+reg load HKLM\OfflineSystem C:\Windows\System32\config\SYSTEM
+reg delete HKLM\OfflineSystem\ControlSet001\Services\Anchor /f
+reg delete HKLM\OfflineSystem\ControlSet001\Services\AnchorGuardian /f
+reg unload HKLM\OfflineSystem
+del "C:\ProgramData\Anchor\state.dat"
+rmdir /s /q "C:\Program Files\Anchor"
+reg load HKLM\OfflineSoftware C:\Windows\System32\config\SOFTWARE
+reg delete HKLM\OfflineSoftware\Anchor /f
+reg unload HKLM\OfflineSoftware
+notepad C:\Windows\System32\drivers\etc\hosts
+exit

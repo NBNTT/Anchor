@@ -22,6 +22,53 @@ public static class PacketParser
     private const byte ProtoUdp = 17;
 
     /// <summary>
+    /// Where the TCP payload sits inside a packet, plus a cheap identifier for the connection
+    /// it belongs to. FilterEngine uses this to stitch together a TLS ClientHello that was split
+    /// across several packets. Returns false for anything that isn't outbound TCP with a payload.
+    /// </summary>
+    public static bool TryGetTcpFlow(ReadOnlySpan<byte> packet, out ulong flowKey, out int payloadStart,
+                                     out int payloadLength, out int dstPort)
+    {
+        flowKey = 0; payloadStart = 0; payloadLength = 0; dstPort = 0;
+        if (packet.Length < 20) return false;
+
+        int version = packet[0] >> 4;
+        int l4Start;
+        int addrStart, addrLen;
+
+        if (version == 4)
+        {
+            int ihl = (packet[0] & 0x0F) * 4;
+            if (ihl < 20 || packet.Length < ihl || packet[9] != ProtoTcp) return false;
+            l4Start = ihl; addrStart = 12; addrLen = 8;      // src+dst IPv4 addresses
+        }
+        else if (version == 6)
+        {
+            if (packet.Length < 40 || packet[6] != ProtoTcp) return false;
+            l4Start = 40; addrStart = 8; addrLen = 32;       // src+dst IPv6 addresses
+        }
+        else return false;
+
+        if (packet.Length < l4Start + 20) return false;
+        int srcPort = (packet[l4Start] << 8) | packet[l4Start + 1];
+        dstPort = (packet[l4Start + 2] << 8) | packet[l4Start + 3];
+
+        int tcpHeaderLen = (packet[l4Start + 12] >> 4) * 4;
+        if (tcpHeaderLen < 20) return false;
+        payloadStart = l4Start + tcpHeaderLen;
+        if (payloadStart > packet.Length) return false;
+        payloadLength = packet.Length - payloadStart;
+
+        // Cheap, allocation-free connection id: ports + a hash of the address pair.
+        uint addrHash = 2166136261u;                          // FNV-1a
+        for (int i = addrStart; i < addrStart + addrLen && i < packet.Length; i++)
+            addrHash = (addrHash ^ packet[i]) * 16777619u;
+
+        flowKey = ((ulong)(uint)srcPort << 48) | ((ulong)(uint)dstPort << 32) | addrHash;
+        return true;
+    }
+
+    /// <summary>
     /// Given a full IP packet, try to find the hostname it targets (SNI on 443, or DNS name on 53).
     /// Returns true and sets <paramref name="host"/> only on success.
     /// </summary>

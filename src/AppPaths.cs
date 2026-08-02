@@ -25,6 +25,16 @@ public static class AppPaths
     public static string StateFile => Path.Combine(DataDir, "state.dat"); // DPAPI-encrypted lock timer
     public static string LogFile => Path.Combine(DataDir, "anchor.log");
 
+    /// <summary>
+    /// If this file exists WHEN A LOCK IS STARTED, that lock runs in observe-only mode: the
+    /// filter logs what it would block but drops nothing and changes nothing on the machine.
+    /// Use it to sanity-check a filter change against real traffic before trusting it.
+    ///
+    /// Deliberately read only at the moment a lock STARTS, and then remembered inside the
+    /// lock itself — so it can't be used mid-lock to quietly turn enforcement off.
+    /// </summary>
+    public static string DryRunFile => Path.Combine(DataDir, "DRYRUN");
+
     // The real Windows hosts file (our secondary, belt-and-suspenders block layer).
     public static string HostsFile => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.System), "drivers", "etc", "hosts");

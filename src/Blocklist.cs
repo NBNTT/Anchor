@@ -33,6 +33,19 @@ public sealed class Blocklist
         "redditmedia.com",          // reddit's media CDN
     };
 
+    // ---------------------------------------------------------------------------------
+    // DO NOT ADD DNS-OVER-HTTPS (DoH) RESOLVERS HERE. Learned the hard way on 2026-08-01:
+    // blocking DoH endpoints (e.g. chrome.cloudflare-dns.com) at the packet level took the
+    // whole browser offline. A browser whose "Secure DNS" is set to a SPECIFIC provider runs
+    // in strict mode and does NOT fall back to system DNS — so killing its resolver meant it
+    // could not look up ANY site, and the machine appeared to have no internet at all.
+    //
+    // Only ever block CONTENT domains the user actually asked for. Infrastructure a machine
+    // depends on (DNS, time, updates, certificate checks) must never be dropped here.
+    // To stop DoH from bypassing the hosts layer, we turn it off politely through browser
+    // policy instead — see DohPolicy.cs.
+    // ---------------------------------------------------------------------------------
+
     private readonly HashSet<string> _domains;
 
     public Blocklist() : this(DefaultDomains) { }

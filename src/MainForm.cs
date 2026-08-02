@@ -199,8 +199,10 @@ public sealed class MainForm : Form
             Font = new Font("Segoe UI", 11f),
             Margin = new Padding(0, 4, 0, 0),
         };
-        _unit.Items.AddRange(new object[] { "Hours", "Days" });
-        _unit.SelectedIndex = 0;
+        _unit.Items.AddRange(new object[] { "Minutes", "Hours", "Days" });
+        _unit.SelectedIndexChanged += OnUnitChanged;
+        _unit.SelectedIndex = 1;                 // default to Hours
+        ApplyUnitRange();                        // set the matching min/max for that unit
         _startButton = new Button { Size = new Size(180, 40), Margin = new Padding(14, 1, 0, 0) };
         StylePrimary(_startButton, Accent);
         _startButton.Click += OnStartClicked;
@@ -208,7 +210,7 @@ public sealed class MainForm : Form
 
         var capNote = new Label
         {
-            Text = "Max 7 days per lock. You can extend a lock, but never shorten it.",
+            Text = "From 1 minute up to 7 days. You can extend a lock, but never shorten it.",
             Font = new Font("Segoe UI", 9f),
             ForeColor = Muted,
             AutoSize = true,
@@ -481,11 +483,31 @@ public sealed class MainForm : Form
         }
     }
 
+    /// <summary>Keep the number box's range sensible for whichever unit is selected.</summary>
+    private void OnUnitChanged(object? sender, EventArgs e) => ApplyUnitRange();
+
+    private void ApplyUnitRange()
+    {
+        // Upper bounds all correspond to the same 7-day cap enforced in LockState.
+        (decimal max, decimal fallback) = _unit.SelectedItem?.ToString() switch
+        {
+            "Minutes" => (10080m, 30m),   // 7 days in minutes
+            "Days" => (7m, 1m),
+            _ => (168m, 2m),              // Hours: 7 days in hours
+        };
+
+        _amount.Maximum = max;
+        if (_amount.Value > max) _amount.Value = fallback;
+    }
+
     private void OnStartClicked(object? sender, EventArgs e)
     {
-        var duration = _unit.SelectedItem?.ToString() == "Days"
-            ? TimeSpan.FromDays((double)_amount.Value)
-            : TimeSpan.FromHours((double)_amount.Value);
+        var duration = _unit.SelectedItem?.ToString() switch
+        {
+            "Minutes" => TimeSpan.FromMinutes((double)_amount.Value),
+            "Days" => TimeSpan.FromDays((double)_amount.Value),
+            _ => TimeSpan.FromHours((double)_amount.Value),
+        };
 
         if (duration > TimeSpan.FromDays(7)) duration = TimeSpan.FromDays(7);
 
@@ -496,7 +518,9 @@ public sealed class MainForm : Form
         if (confirm != DialogResult.Yes) return;
 
         var state = LockState.Load();
-        state.StartOrExtend(duration);
+        // Observe-only mode is captured here, at the moment the lock starts, and then lives
+        // inside the lock — so it can't be switched on later to disable an enforcing lock.
+        state.StartOrExtend(duration, dryRun: File.Exists(AppPaths.DryRunFile));
         state.Save();
 
         ServiceControl.EnsureRunning(AppPaths.ServiceName);

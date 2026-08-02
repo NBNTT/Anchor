@@ -33,13 +33,24 @@ public sealed class LockState
     public long AccumulatedSeconds { get; set; }
     public DateTime StartedUtc { get; set; }
 
+    /// <summary>
+    /// True if this lock was started in observe-only mode. Captured ONCE when the lock begins
+    /// and stored inside the lock itself, so enforcement can't be quietly switched off partway
+    /// through by creating a file. See AppPaths.DryRunFile.
+    /// </summary>
+    public bool DryRun { get; set; }
+
     // ---- Computed helpers (not saved) ----
     [JsonIgnore] public long RemainingSeconds => Math.Max(0, RequiredSeconds - AccumulatedSeconds);
     [JsonIgnore] public TimeSpan Remaining => TimeSpan.FromSeconds(RemainingSeconds);
     [JsonIgnore] public bool IsLocked => Active && RemainingSeconds > 0;
 
-    /// <summary>Start a new lock, or EXTEND an existing one. You can only ever make it longer.</summary>
-    public void StartOrExtend(TimeSpan duration)
+    /// <summary>
+    /// Start a new lock, or EXTEND an existing one. You can only ever make it longer.
+    /// <paramref name="dryRun"/> is honoured only when a NEW lock begins — an active
+    /// enforcing lock can never be downgraded to observe-only.
+    /// </summary>
+    public void StartOrExtend(TimeSpan duration, bool dryRun = false)
     {
         long secs = Math.Clamp((long)duration.TotalSeconds, MinSeconds, MaxSeconds);
 
@@ -49,6 +60,7 @@ public sealed class LockState
             RequiredSeconds = secs;
             AccumulatedSeconds = 0;
             StartedUtc = DateTime.UtcNow;
+            DryRun = dryRun;
         }
         else if (secs > RemainingSeconds)
         {

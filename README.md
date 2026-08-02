@@ -40,11 +40,35 @@ The folder you run must contain **three files together**:
   the QUIC **Initial** packet — whose keys derive from public values in the packet itself
   ([RFC 9001](https://www.rfc-editor.org/rfc/rfc9001.html)) — to read the same site name.
   Switching to HTTP-3 doesn't dodge the block.
-- It drops matching **DNS lookups** and writes **hosts-file** entries as cheap backup layers.
+- A ClientHello is often **split across several packets** (Chrome's post-quantum handshake is
+  ~2 KB), so Anchor reassembles the handshake per connection before deciding. Dropping any one
+  segment is enough to stop the connection.
+- It drops matching **DNS lookups** and writes **hosts-file** entries as cheap backup layers,
+  and while locked it asks browsers to stop using DoH via the documented **enterprise policy**
+  (`DnsOverHttpsMode=off`), restoring your previous setting afterwards. Anchor never *blocks*
+  DNS traffic — see the safety note below for why that matters.
 - A **guardian service** restarts the blocker if it's killed, and the blocker restarts the
   guardian — a mutual watchdog. Both auto-start at boot and auto-restart on failure.
-- **Battery-friendly**: only the handshake packet that carries the site name is inspected;
-  bulk upload/download traffic is never copied into the process.
+- Only handshake and DNS packets are examined; bulk traffic is passed straight through, and
+  logging is throttled so a blocked site's retry storm can't bog the filter down.
+
+## Safety — Anchor fails open, on purpose
+
+A blocker that can break your computer is worse than no blocker. So:
+
+- **It only ever blocks the content domains listed in `src/Blocklist.cs`.** It will not block
+  DNS resolvers, time servers, updates, or certificate checks. Blocking infrastructure once
+  took a browser fully offline during development — a browser with "Secure DNS" pointed at a
+  specific provider does *not* fall back to system DNS — so that is now a hard rule, enforced
+  by a regression test.
+- **A dead-man switch.** While blocking, Anchor verifies every 30 seconds that ordinary HTTPS
+  still works (a real TLS handshake to a neutral IP, so it works even if DNS is broken). If
+  that fails for ~90 seconds it disables blocking automatically, logs why, and backs off.
+- **A crash can't blackhole traffic.** The packet handle is always closed if the filter thread
+  exits, so a bug means "traffic flows", never "traffic disappears".
+- **Dry-run mode.** Create `C:\ProgramData\Anchor\DRYRUN` *before* starting a lock and that
+  lock is observe-only: it logs what it would block and changes nothing. Useful for verifying
+  a change safely. (Read only when a lock starts, so it can't switch off a running lock.)
 
 ## The lock — why it's hard to quit
 
@@ -53,6 +77,8 @@ The folder you run must contain **three files together**:
 - While locked, the services are **hardened**: `net stop`, Services.msc, and Task Manager
   can't stop them, and the app refuses to uninstall.
 - The timer is stored **encrypted** (DPAPI) in two places, so deleting one copy won't unlock you.
+- Locks run from **1 minute to 7 days**. You can always *extend* a lock; you can never shorten
+  one, and there is deliberately no manual off switch.
 - **Safety caps**: no single lock exceeds **7 days**, and **Safe Mode always disables
   everything** — you can never truly lock yourself out. See [RECOVERY.md](RECOVERY.md).
 
@@ -118,6 +144,8 @@ publishes a single self-contained `Anchor.exe` (no .NET install needed to *run* 
 | `src/ServiceHost.cs` | The two Windows services + their worker loop |
 | `src/ServiceControl.cs` | Install / uninstall / harden / auto-update (via `sc.exe`) |
 | `src/StartupTask.cs` | The "start at login" Scheduled Task |
+| `src/DohPolicy.cs` | Turns browser DoH off via policy (and puts it back) |
+| `src/NetworkHealth.cs` | The dead-man switch that makes Anchor fail open |
 | `src/AppPaths.cs`, `src/Log.cs` | Where files live; simple logging |
 
 Log file (useful for seeing what the service did): `C:\ProgramData\Anchor\anchor.log`.
